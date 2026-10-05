@@ -16,7 +16,9 @@ if not DATABASE_URL:
     db_port = os.getenv("DB_PORT", "5432")
     db_name = os.getenv("DB_NAME", "bdanime")
     db_sslmode = os.getenv("DB_SSLMODE", "require")
-    DATABASE_URL = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?sslmode={db_sslmode}"
+    DATABASE_URL = f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}?sslmode={db_sslmode}"
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 # Crear motor de base de datos SQLAlchemy
 engine = create_engine(
