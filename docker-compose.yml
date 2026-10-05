@@ -1,0 +1,63 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: animequiz_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - PYTHONUNBUFFERED=1
+      # NOTA: Por defecto tomará las variables del archivo .env (por ejemplo tu base de datos en Aiven).
+      # Si deseas conectar este backend a la base de datos local 'db' de Docker, descomenta lo siguiente:
+      # - DB_HOST=db
+      # - DB_PORT=5432
+      # - DB_USER=postgres
+      # - DB_PASSWORD=postgres
+      # - DB_NAME=bdanime
+      # - DB_SSLMODE=disable
+    volumes:
+      # Montar carpeta local img para persistir avatares e imágenes subidas
+      - ./img:/app/img
+    networks:
+      - animequiz_network
+    # Si activas la base de datos local 'db', puedes descomentar la dependencia:
+    # depends_on:
+    #   db:
+    #     condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    container_name: animequiz_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-bdanime}
+    ports:
+      # Mapeado a 5433 en el host para evitar conflictos si ya tienes PostgreSQL en el puerto 5432
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Ejecuta el script SQL inicial automáticamente en el primer inicio
+      - ./sql/v1_bdanime.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-bdanime}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - animequiz_network
+
+volumes:
+  postgres_data:
+    name: animequiz_postgres_data
+
+networks:
+  animequiz_network:
+    name: animequiz_network
+    driver: bridge

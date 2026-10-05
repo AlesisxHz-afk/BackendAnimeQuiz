@@ -1,0 +1,130 @@
+name: CI/CD Pipeline - Backend Anime Quiz
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  # ==========================================
+  # 1. Calidad de Código y Validación de Python
+  # ==========================================
+  code-quality:
+    name: Lint & Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Validar sintaxis y compilación de Python
+        run: |
+          python -m py_compile main.py database.py models.py schemas.py security.py
+
+      - name: Análisis estático con Flake8 (Warnings / Syntax errors)
+        run: |
+          # Detiene la ejecución si hay errores de sintaxis de Python o nombres no definidos
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Advertencias de estilo (no bloqueante)
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  # ==========================================
+  # 2. Construcción y Verificación de Docker
+  # ==========================================
+  docker-build:
+    name: Docker Build & Compose Check
+    runs-on: ubuntu-latest
+    needs: code-quality
+
+    steps:
+      - name: Descargar código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Validar configuración de docker-compose.yml
+        run: |
+          docker compose config
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Construir imagen Docker de prueba
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: animequiz-backend:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ==========================================
+  # 3. Publicación de Imagen Docker (Opcional / Despliegue)
+  # ==========================================
+  docker-publish:
+    name: Build & Push to Docker Hub
+    runs-on: ubuntu-latest
+    needs: docker-build
+    # Se ejecuta solo en push a la rama principal y si las credenciales de Docker Hub están configuradas
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+      - name: Descargar código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Iniciar sesión en Docker Hub
+        if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generar metadatos de Docker (tags, labels)
+        if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/animequiz-backend
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+      - name: Construir y publicar imagen a Docker Hub
+        if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
