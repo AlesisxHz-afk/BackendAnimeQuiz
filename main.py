@@ -65,6 +65,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/", tags=["Health"])
+def root():
+    return {
+        "status": "online",
+        "message": "Anime Quiz API activa",
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
+
+@app.get("/api/health", tags=["Health"])
+def health_check(db: Session = Depends(get_db)):
+    """Verifica el estado del servicio y la conectividad con la base de datos."""
+    try:
+        db.execute(text("SELECT 1"))
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "environment": "production"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"status": "degraded", "database": f"error: {str(e)}"}
+        )
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.Usuario:

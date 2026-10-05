@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: alesisxhz/animequiz-backend:latest
     container_name: animequiz_backend
     restart: unless-stopped
     ports:
@@ -12,23 +13,16 @@ services:
         required: false
     environment:
       - PYTHONUNBUFFERED=1
-      # NOTA: Por defecto tomará las variables del archivo .env (por ejemplo tu base de datos en Aiven).
-      # Si deseas conectar este backend a la base de datos local 'db' de Docker, descomenta lo siguiente:
-      # - DB_HOST=db
-      # - DB_PORT=5432
-      # - DB_USER=postgres
-      # - DB_PASSWORD=postgres
-      # - DB_NAME=bdanime
-      # - DB_SSLMODE=disable
     volumes:
       # Montar carpeta local img para persistir avatares e imágenes subidas
       - ./img:/app/img
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - animequiz_network
-    # Si activas la base de datos local 'db', puedes descomentar la dependencia:
-    # depends_on:
-    #   db:
-    #     condition: service_healthy
 
   db:
     image: postgres:16-alpine
@@ -50,6 +44,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - animequiz_network
 
